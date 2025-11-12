@@ -7,6 +7,22 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongo:27017/aseguradoras';
 const app = express();
 app.use(express.json());
 
+const asISO = d => {
+  if (d && d.year && d.month && d.day) {
+    const y = d.year.low ?? d.year;
+    const m = String(d.month.low ?? d.month).padStart(2, '0');
+    const day = String(d.day.low ?? d.day).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return d ?? null;
+};
+
+const asBool = v => {
+  if (typeof v === 'boolean') return v;
+  const s = String(v ?? '').trim().toLowerCase();
+  return s === 'true' || s === '1' || s === 'si';
+};
+
 // Conexión Mongo
 const client = new MongoClient(MONGO_URI);
 let db;
@@ -136,23 +152,33 @@ app.get('/clientes/activos-con-polizas', async (req, res) => {
 // Siniestros abiertos
 app.get('/siniestros/abiertos', async (req, res) => {
   const limitNum = Math.max(1, Math.min(200, Number.parseInt(req.query.limit || '100', 10)));
+  const estado = (req.query.estado || 'ABIERTO').toUpperCase(); 
+  const desde = req.query.desde || null;
+  const hasta = req.query.hasta || null;
+
   const s = neo4jSession();
   try {
     const q = `
-    MATCH (c:Cliente)-[:TIENE]->(p:Poliza)-[:TIENE]->(s:Siniestro)
-    WHERE toUpper(s.estado) IN ['ABIERTO','OPEN']
-    RETURN
+      MATCH (c:Cliente)-[:TIENE]->(p:Poliza)-[:TIENE]->(s:Siniestro)
+      WHERE toUpper(s.estado) = $estado
+        AND ($desde IS NULL OR s.fecha >= date($desde))
+        AND ($hasta IS NULL OR s.fecha <= date($hasta))
+      RETURN
         c.id    AS cliente_id,
         p.id    AS poliza_id,
         s.id    AS siniestro_id,
         s.tipo  AS tipo,
         s.monto AS monto,
         s.fecha AS fecha
-    ORDER BY coalesce(s.fecha, datetime({year:0})) DESC, s.id
-    LIMIT $limit
+      ORDER BY (s.fecha IS NULL) ASC, s.fecha DESC, s.id
+      LIMIT $limit
     `;
-    const r = await s.run(q, { limit: toInt(limitNum) });
-    res.json(r.records.map(rec => rec.toObject()));
+    const r = await s.run(q, { estado, desde, hasta, limit: toInt(limitNum) });
+    res.json(r.records.map(rec => {
+      const obj = rec.toObject();
+      obj.fecha = asISO(obj.fecha);
+      return obj;
+    }));
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: 'neo4j_query_failed' });
@@ -161,5 +187,64 @@ app.get('/siniestros/abiertos', async (req, res) => {
   }
 });
 
-const port = process.env.PORT || 3000;
+app.post('/clientes', async (req, res) => {
+  const { id_cliente, nombre, apellido, dni, email, telefono, direccion, ciudad, provincia, activo } = req.body || {};
+  if (id_cliente == null || !nombre || !apellido) {
+    return res.status(400).json({ error: 'id_cliente, nombre y apellido son obligatorios' });
+  }
+
+  const idc = Number.isNaN(Number(id_cliente)) ? String(id_cliente) : Number(id_cliente);
+  const exists = await db.collection('clientes').findOne({ id_cliente: idc });
+  if (exists) return res.status(409).json({ error: 'cliente_ya_existe' });
+
+  const doc = {
+    id_cliente: idc,
+    nombre,
+    apellido,
+    dni: dni ?? null,
+    email: email ?? null,
+    telefono: telefono ?? null,
+    direccion: direccion ?? null,
+    ciudad: ciudad ?? null,
+    provincia: provincia ?? null,
+    activo: activo == null ? true : asBool(activo)
+  };
+
+  const r = await db.collection('clientes').insertOne(doc);
+
+  try {
+    const s = neo4jSession();
+    await s.run(`MERGE (c:Cliente {id:$id}) SET c.nombre=$nom, c.apellido=$ape`, {
+      id: String(idc),
+      nom: nombre,
+      ape: apellido
+    });
+    await s.close();
+  } catch (_) {}
+
+  res.status(201).json({ _id: r.insertedId, ...doc });
+});
+
+app.patch('/clientes/:id/baja', async (req, res) => {
+  const raw = req.params.id;
+  const idc = Number.isNaN(Number(raw)) ? String(raw) : Number(raw);
+
+  const r = await db.collection('clientes').updateOne(
+    { id_cliente: idc },
+    { $set: { activo: false } }
+  );
+  if (r.matchedCount === 0) return res.status(404).json({ error: 'cliente_no_encontrado' });
+
+  try {
+    const s = neo4jSession();
+    await s.run(`MERGE (c:Cliente {id:$id}) SET c.baja = true`, { id: String(idc) });
+    await s.close();
+  } catch (_) {}
+
+  res.json({ ok: true });
+});
+
+
+
+const port = process.env.PORT;
 app.listen(port, () => console.log(`API :${port}`));
