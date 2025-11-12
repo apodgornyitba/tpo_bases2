@@ -154,18 +154,6 @@ Esta combinación responde a los requisitos funcionales y no funcionales del enu
 ### Conclusión
 Si bien las alternativas pueden aportar ventajas, estas se presentan en casos MUY específicos que no sucederán en el contexto de este trabajo ni tiene sentido considerar dado que estos exceden la funcionalidad pedida del sistema. Es por esto que se definió el uso de MongoDB + Neo4j
 
-## Seguridad, operaciones y despliegue
-
-- Despliegue reproducible con Docker Compose; variables de entorno centralizadas en `.env`.
-- Backups:
-  - Mongo: `mongodump` / snapshots del volumen.
-  - Neo4j: export / backups provistos por Neo4j (o snapshots del volumen en Enterprise).
-- Hardening:
-  - No exponer credenciales en repositorio; usar secretos para producción.
-  - Restringir puertos y políticas de red en despliegues reales.
-- Monitoreo:
-  - Métricas de latencia de queries, uso de índices, filas retornadas; logs del ETL y marca de errores `_neo4j_sync_error` para reconciliación.
-
 ## Trade-offs y riesgos
 
 - Complejidad operativa mayor (dos DBs) frente a beneficio en rendimiento y modelado.
