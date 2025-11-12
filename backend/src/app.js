@@ -1,6 +1,7 @@
 import express from 'express';
 import { MongoClient } from 'mongodb';
 import { ensureIndexes } from './ensure-indexes.js';
+import { session as neo4jSession, pingNeo4j, toInt } from './neo4j.js';
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongo:27017/aseguradoras';
 const app = express();
@@ -19,6 +20,12 @@ init().catch((e) => { console.error(e); process.exit(1); });
 
 // Health
 app.get('/health', (req, res) => res.json({ ok: true }));
+
+// Health Neo4j
+app.get('/neo4j/health', async (req, res) => {
+  try { res.json({ ok: await pingNeo4j() }); }
+  catch { res.status(500).json({ ok: false }); }
+});
 
 // Clientes activos con pólizas vigentes
 app.get('/clientes/activos-con-polizas', async (req, res) => {
@@ -124,6 +131,34 @@ app.get('/clientes/activos-con-polizas', async (req, res) => {
   ]);
 
   res.json({ page, pageSize, total: total[0]?.n || 0, items });
+});
+
+// Siniestros abiertos
+app.get('/siniestros/abiertos', async (req, res) => {
+  const limitNum = Math.max(1, Math.min(200, Number.parseInt(req.query.limit || '100', 10)));
+  const s = neo4jSession();
+  try {
+    const q = `
+    MATCH (c:Cliente)-[:TIENE]->(p:Poliza)-[:TIENE]->(s:Siniestro)
+    WHERE toUpper(s.estado) IN ['ABIERTO','OPEN']
+    RETURN
+        c.id    AS cliente_id,
+        p.id    AS poliza_id,
+        s.id    AS siniestro_id,
+        s.tipo  AS tipo,
+        s.monto AS monto,
+        s.fecha AS fecha
+    ORDER BY coalesce(s.fecha, datetime({year:0})) DESC, s.id
+    LIMIT $limit
+    `;
+    const r = await s.run(q, { limit: toInt(limitNum) });
+    res.json(r.records.map(rec => rec.toObject()));
+  } catch (e) {
+    console.error(e);
+    res.status(500).json({ error: 'neo4j_query_failed' });
+  } finally {
+    await s.close();
+  }
 });
 
 const port = process.env.PORT || 3000;
