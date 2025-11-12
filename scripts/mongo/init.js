@@ -2,8 +2,8 @@ const dbName = 'aseguradoras';
 const db = db.getSiblingDB(dbName);
 
 // crear colecciones si no existen
-['clientes','agentes','polizas','siniestros','vehiculos'].forEach(c => {
-  if (!db.getCollectionNames().includes(c)) db.createCollection(c);
+['clientes', 'agentes', 'polizas', 'siniestros', 'vehiculos'].forEach(c => {
+    if (!db.getCollectionNames().includes(c)) db.createCollection(c);
 });
 
 

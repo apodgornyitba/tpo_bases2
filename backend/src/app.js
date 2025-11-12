@@ -480,5 +480,280 @@ app.post('/siniestros', async (req, res) => {
     res.status(201).json({ _id: r.insertedId, ...doc });
 });
 
+// 3) Vehículos asegurados con su cliente y póliza
+app.get('/vehiculos/asegurados', async (req, res) => {
+    const now = new Date();
+    const cur = db.collection('vehiculos').aggregate([
+        { $addFields: { asegurado_norm: { $in: [{ $toLower: { $toString: "$asegurado" } }, ["true", "1", "yes", "y", "t", "si", "sí"]] } } },
+        { $match: { asegurado_norm: true } },
+        { $lookup: { from: 'clientes', localField: 'id_cliente', foreignField: 'id_cliente', as: 'cli' } },
+        { $unwind: { path: '$cli', preserveNullAndEmptyArrays: true } },
+        {
+            $lookup: {
+                from: 'polizas',
+                let: { cid: '$id_cliente' },
+                pipeline: [
+                    { $match: { $expr: { $eq: ["$id_cliente", "$$cid"] } } },
+                    {
+                        $addFields: {
+                            _fi: {
+                                $cond: [
+                                    { $eq: [{ $type: "$fecha_inicio" }, "string"] },
+                                    {
+                                        $let: {
+                                            vars: { p: { $split: ["$fecha_inicio", "/"] } },
+                                            in: {
+                                                $dateFromParts: {
+                                                    year: { $toInt: { $arrayElemAt: ["$$p", 2] } },
+                                                    month: { $toInt: { $arrayElemAt: ["$$p", 1] } },
+                                                    day: { $toInt: { $arrayElemAt: ["$$p", 0] } }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "$fecha_inicio"
+                                ]
+                            },
+                            _ff: {
+                                $cond: [
+                                    { $eq: [{ $type: "$fecha_fin" }, "string"] },
+                                    {
+                                        $let: {
+                                            vars: { p: { $split: ["$fecha_fin", "/"] } },
+                                            in: {
+                                                $dateFromParts: {
+                                                    year: { $toInt: { $arrayElemAt: ["$$p", 2] } },
+                                                    month: { $toInt: { $arrayElemAt: ["$$p", 1] } },
+                                                    day: { $toInt: { $arrayElemAt: ["$$p", 0] } }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "$fecha_fin"
+                                ]
+                            },
+                            estado_norm: { $toUpper: "$estado" }
+                        }
+                    },
+                    { $match: { estado_norm: { $in: ["ACTIVA", "VIGENTE"] }, _fi: { $lte: now }, _ff: { $gte: now } } },
+                    { $project: { _id: 0, nro_poliza: 1, tipo: 1, fecha_inicio: { $dateToString: { date: "$_fi", format: "%Y-%m-%d" } }, fecha_fin: { $dateToString: { date: "$_ff", format: "%Y-%m-%d" } } } }
+                ],
+                as: 'polizas_vigentes'
+            }
+        },
+        {
+            $project: {
+                _id: 0, patente: 1, marca: 1, modelo: 1,
+                cliente: { id: '$cli.id_cliente', nombre: '$cli.nombre', apellido: '$cli.apellido' },
+                polizas: '$polizas_vigentes'
+            }
+        }
+    ]);
+    res.json(await cur.toArray());
+});
+
+// 4) Clientes sin pólizas activas
+app.get('/clientes/sin-polizas-activas', async (req, res) => {
+    const now = new Date();
+    const cur = db.collection('clientes').aggregate([
+        { $addFields: { activo_norm: { $in: [{ $toLower: { $toString: "$activo" } }, ["true", "1", "yes", "y", "t", "si", "sí"]] } } },
+        { $match: { activo_norm: true } },
+        {
+            $lookup: {
+                from: 'polizas',
+                let: { cid: '$id_cliente' },
+                pipeline: [
+                    { $match: { $expr: { $eq: ["$id_cliente", "$$cid"] } } },
+                    {
+                        $addFields: {
+                            _fi: { $cond: [{ $eq: [{ $type: "$fecha_inicio" }, "string"] }, { $let: { vars: { p: { $split: ["$fecha_inicio", "/"] } }, in: { $dateFromParts: { year: { $toInt: { $arrayElemAt: ["$$p", 2] } }, month: { $toInt: { $arrayElemAt: ["$$p", 1] } }, day: { $toInt: { $arrayElemAt: ["$$p", 0] } } } } } }, "$fecha_inicio"] },
+                            _ff: { $cond: [{ $eq: [{ $type: "$fecha_fin" }, "string"] }, { $let: { vars: { p: { $split: ["$fecha_fin", "/"] } }, in: { $dateFromParts: { year: { $toInt: { $arrayElemAt: ["$$p", 2] } }, month: { $toInt: { $arrayElemAt: ["$$p", 1] } }, day: { $toInt: { $arrayElemAt: ["$$p", 0] } } } } } }, "$fecha_fin"] },
+                            estado_norm: { $toUpper: "$estado" }
+                        }
+                    },
+                    { $match: { estado_norm: { $in: ["ACTIVA", "VIGENTE"] }, _fi: { $lte: now }, _ff: { $gte: now } } },
+                    { $limit: 1 }
+                ],
+                as: 'p_ok'
+            }
+        },
+        { $match: { p_ok: { $size: 0 } } },
+        { $project: { _id: 0, id_cliente: 1, nombre: 1, apellido: 1 } }
+    ]);
+    res.json(await cur.toArray());
+});
+
+// 5) Agentes activos con cantidad de pólizas asignadas
+app.get('/agentes/activos-con-cant-polizas', async (req, res) => {
+    const cur = db.collection('agentes').aggregate([
+        { $addFields: { activo_norm: { $in: [{ $toLower: { $toString: "$activo" } }, ["true", "1", "yes", "y", "t", "si", "sí"]] } } },
+        { $match: { activo_norm: true } },
+        { $lookup: { from: 'polizas', localField: 'id_agente', foreignField: 'id_agente', as: 'p' } },
+        { $project: { _id: 0, id_agente: 1, nombre: 1, cant_polizas: { $size: '$p' } } },
+        { $sort: { cant_polizas: -1, id_agente: 1 } }
+    ]);
+    res.json(await cur.toArray());
+});
+
+// 6) Pólizas vencidas con nombre del cliente
+app.get('/polizas/vencidas-con-cliente', async (req, res) => {
+    const now = new Date();
+    const cur = db.collection('polizas').aggregate([
+        {
+            $addFields: {
+                _ff: { $cond: [{ $eq: [{ $type: "$fecha_fin" }, "string"] }, { $let: { vars: { p: { $split: ["$fecha_fin", "/"] } }, in: { $dateFromParts: { year: { $toInt: { $arrayElemAt: ["$$p", 2] } }, month: { $toInt: { $arrayElemAt: ["$$p", 1] } }, day: { $toInt: { $arrayElemAt: ["$$p", 0] } } } } } }, "$fecha_fin"] },
+                estado_norm: { $toUpper: "$estado" }
+            }
+        },
+        { $match: { $or: [{ estado_norm: "VENCIDA" }, { _ff: { $lt: now } }] } },
+        { $lookup: { from: 'clientes', localField: 'id_cliente', foreignField: 'id_cliente', as: 'c' } },
+        { $unwind: '$c' },
+        {
+            $project: {
+                _id: 0, nro_poliza: 1, tipo: 1,
+                fecha_fin: { $dateToString: { date: "$_ff", format: "%Y-%m-%d" } },
+                cliente: { id: '$c.id_cliente', nombre: '$c.nombre', apellido: '$c.apellido' }
+            }
+        },
+        { $sort: { fecha_fin: -1 } }
+    ]);
+    res.json(await cur.toArray());
+});
+
+// 7) Top 10 clientes por cobertura total (suma de sus pólizas)
+app.get('/clientes/top-cobertura', async (req, res) => {
+    const cur = db.collection('polizas').aggregate([
+        {
+            $group: {
+                _id: '$id_cliente',
+                cobertura_total: { $sum: { $toDouble: '$cobertura_total' } }
+            }
+        },
+        { $sort: { cobertura_total: -1 } },
+        { $limit: 10 },
+        { $lookup: { from: 'clientes', localField: '_id', foreignField: 'id_cliente', as: 'c' } },
+        { $unwind: { path: '$c', preserveNullAndEmptyArrays: true } },
+        {
+            $project: {
+                _id: 0,
+                id_cliente: '$_id',
+                nombre: '$c.nombre',
+                apellido: '$c.apellido',
+                cobertura_total: 1
+            }
+        }
+    ]);
+    res.json(await cur.toArray());
+});
+
+// 8) Siniestros tipo “Accidente” del último año (Neo4j)
+app.get('/siniestros/accidente-ultimo-anio', async (req, res) => {
+    const s = neo4jSession();
+    try {
+        const r = await s.run(
+            `
+      WITH date() AS hoy, date() - duration('P1Y') AS desde
+      MATCH (c:Cliente)-[:TIENE]->(p:Poliza)-[:TIENE]->(s:Siniestro)
+      WHERE toUpper(s.tipo) = 'ACCIDENTE' AND s.fecha >= desde
+      RETURN c.id AS cliente_id, p.id AS poliza_id, s.id AS siniestro_id, s.fecha AS fecha
+      ORDER BY s.fecha DESC, s.id
+      LIMIT 200
+      `
+        );
+        res.json(r.records.map(x => {
+            const o = x.toObject();
+            o.fecha = asISO(o.fecha);
+            return o;
+        }));
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'neo4j_query_failed' });
+    } finally { await s.close(); }
+});
+
+// 9) Pólizas activas ordenadas por fecha de inicio
+app.get('/polizas/activas-ordenadas', async (req, res) => {
+    const now = new Date();
+    const pageSize = Math.max(1, Math.min(100, parseInt(req.query.pageSize || '25', 10)));
+    const page = Math.max(1, parseInt(req.query.page || '1', 10));
+    const skip = (page - 1) * pageSize;
+
+    const base = [
+        {
+            $addFields: {
+                _fi: { $cond: [{ $eq: [{ $type: "$fecha_inicio" }, "string"] }, { $let: { vars: { p: { $split: ["$fecha_inicio", "/"] } }, in: { $dateFromParts: { year: { $toInt: { $arrayElemAt: ["$$p", 2] } }, month: { $toInt: { $arrayElemAt: ["$$p", 1] } }, day: { $toInt: { $arrayElemAt: ["$$p", 0] } } } } } }, "$fecha_inicio"] },
+                _ff: { $cond: [{ $eq: [{ $type: "$fecha_fin" }, "string"] }, { $let: { vars: { p: { $split: ["$fecha_fin", "/"] } }, in: { $dateFromParts: { year: { $toInt: { $arrayElemAt: ["$$p", 2] } }, month: { $toInt: { $arrayElemAt: ["$$p", 1] } }, day: { $toInt: { $arrayElemAt: ["$$p", 0] } } } } } }, "$fecha_fin"] },
+                estado_norm: { $toUpper: "$estado" }
+            }
+        },
+        { $match: { estado_norm: { $in: ["ACTIVA", "VIGENTE"] }, _fi: { $lte: now }, _ff: { $gte: now } } }
+    ];
+
+    const [items, total] = await Promise.all([
+        db.collection('polizas').aggregate([...base, { $sort: { _fi: 1, nro_poliza: 1 } }, { $skip: skip }, { $limit: pageSize },
+        { $project: { _id: 0, nro_poliza: 1, tipo: 1, fecha_inicio: { $dateToString: { date: "$_fi", format: "%Y-%m-%d" } }, fecha_fin: { $dateToString: { date: "$_ff", format: "%Y-%m-%d" } }, estado: '$estado_norm' } }
+        ]).toArray(),
+        db.collection('polizas').aggregate([...base, { $count: 'n' }]).toArray()
+    ]);
+
+    res.json({ page, pageSize, total: total[0]?.n || 0, items });
+});
+
+// 10) Pólizas suspendidas con estado del cliente
+app.get('/polizas/suspendidas-con-estado-cliente', async (req, res) => {
+    const cur = db.collection('polizas').aggregate([
+        { $addFields: { estado_norm: { $toUpper: "$estado" } } },
+        { $match: { estado_norm: 'SUSPENDIDA' } },
+        { $lookup: { from: 'clientes', localField: 'id_cliente', foreignField: 'id_cliente', as: 'c' } },
+        { $unwind: { path: '$c', preserveNullAndEmptyArrays: true } },
+        {
+            $project: {
+                _id: 0, nro_poliza: 1, tipo: 1, estado: '$estado_norm',
+                cliente: {
+                    id: '$c.id_cliente',
+                    nombre: '$c.nombre',
+                    apellido: '$c.apellido',
+                    activo: '$c.activo'
+                }
+            }
+        }
+    ]);
+    res.json(await cur.toArray());
+});
+
+// 11) Clientes con más de un vehículo asegurado
+app.get('/clientes/con-multiples-vehiculos', async (req, res) => {
+    const cur = db.collection('vehiculos').aggregate([
+        { $addFields: { asegurado_norm: { $in: [{ $toLower: { $toString: "$asegurado" } }, ["true", "1", "yes", "y", "t", "si", "sí"]] } } },
+        { $match: { asegurado_norm: true } },
+        { $group: { _id: '$id_cliente', cant: { $sum: 1 } } },
+        { $match: { cant: { $gt: 1 } } },
+        { $lookup: { from: 'clientes', localField: '_id', foreignField: 'id_cliente', as: 'c' } },
+        { $unwind: { path: '$c', preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 0, id_cliente: '$_id', nombre: '$c.nombre', apellido: '$c.apellido', cant_vehiculos: '$cant' } },
+        { $sort: { cant_vehiculos: -1, id_cliente: 1 } }
+    ]);
+    res.json(await cur.toArray());
+});
+
+// 12) Agentes y cantidad de siniestros asociados (Neo4j)
+app.get('/agentes/cant-siniestros', async (req, res) => {
+    const s = neo4jSession();
+    try {
+        const r = await s.run(
+            `
+      MATCH (a:Agente)-[:GESTIONA]->(p:Poliza)-[:TIENE]->(s:Siniestro)
+      RETURN a.id AS id_agente, count(s) AS cant_siniestros
+      ORDER BY cant_siniestros DESC, id_agente ASC
+      LIMIT 200
+      `
+        );
+        res.json(r.records.map(x => x.toObject()));
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'neo4j_query_failed' });
+    } finally { await s.close(); }
+});
+
 const port = process.env.PORT;
 app.listen(port, () => console.log(`API :${port}`));
