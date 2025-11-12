@@ -4,7 +4,8 @@
   "type": "module",
   "main": "src/app.js",
   "scripts": {
-    "start": "node src/app.js"
+    "start": "node src/app.js",
+    "etl:neo4j": "node src/jobs/etl_mongo_to_neo4j.js"
   },
   "dependencies": {
     "express": "^4.19.2",

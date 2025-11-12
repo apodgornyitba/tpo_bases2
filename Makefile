@@ -13,3 +13,5 @@ import-csv:
 	docker exec -i tpo-mongo-1 mongoimport --db aseguradoras --collection polizas --type csv --headerline --file /data/import/polizas.csv
 	docker exec -i tpo-mongo-1 mongoimport --db aseguradoras --collection siniestros --type csv --headerline --file /data/import/siniestros.csv
 	docker exec -i tpo-mongo-1 mongoimport --db aseguradoras --collection vehiculos --type csv --headerline --file /data/import/vehiculos.csv
+etl-neo4j:
+	docker compose exec -T api node src/jobs/etl_mongo_to_neo4j.js
