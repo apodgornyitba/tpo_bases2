@@ -23,6 +23,27 @@ const asBool = v => {
   return s === 'true' || s === '1' || s === 'si';
 };
 
+function formatDateToISO(value) {
+  const today = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  const toISO = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  if (!value) return toISO(today);
+  if (value instanceof Date) return toISO(value);
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
+    const [d,m,y] = s.split('/');
+    return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(s)) {
+    const [y,m,d] = s.split('/');
+    return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+  }
+  const parsed = new Date(s);
+  if (!Number.isNaN(parsed.getTime())) return toISO(parsed);
+  return toISO(today);
+}
+
 // Conexión Mongo
 const client = new MongoClient(MONGO_URI);
 let db;
@@ -286,6 +307,66 @@ app.patch('/clientes/:id', async (req, res) => {
   res.json(r.value);
 });
 
+// Alta de siniestro con doble write (Mongo -> Neo4j)
+app.post('/siniestros', async (req, res) => {
+  const { nro_poliza, tipo, descripcion, monto_estimado, fecha } = req.body || {};
+  if (!nro_poliza || !tipo) {
+    return res.status(400).json({ error: 'nro_poliza y tipo son obligatorios' });
+  }
+
+  const poliza = await db.collection('polizas').findOne({ nro_poliza: String(nro_poliza) });
+  if (!poliza) return res.status(400).json({ error: 'poliza_inexistente' });
+
+  const estadoPoliza = String(poliza.estado || '').trim().toUpperCase();
+  if (!['ACTIVA', 'SUSPENDIDA', 'VIGENTE'].includes(estadoPoliza)) {
+    return res.status(400).json({ error: 'poliza_no_habilitada' });
+  }
+
+  const hoy = new Date();
+  const doc = {
+    id_siniestro: await db.collection('siniestros').countDocuments() + 9001, // simple correlativo local
+    nro_poliza: String(nro_poliza),
+    fecha: fecha ?? `${hoy.getDate()}/${hoy.getMonth()+1}/${hoy.getFullYear()}`, // dd/m/yyyy
+    tipo: String(tipo),
+    monto_estimado: monto_estimado != null ? Number(monto_estimado) : null,
+    descripcion: descripcion ?? null,
+    estado: 'Abierto'
+  };
+  const r = await db.collection('siniestros').insertOne(doc);
+
+  const s = neo4jSession();
+  try {
+    await s.run(
+      `
+      MERGE (p:Poliza {id:$pid})
+      MERGE (s:Siniestro {id:$sid})
+      ON CREATE SET s.id_siniestro=$id_sin, s.tipo=$tipo, s.estado='ABIERTO',
+                    s.fecha=date($fecha_iso), s.monto=toFloat($monto), s.descripcion=$desc
+      ON MATCH  SET s.tipo=$tipo, s.estado='ABIERTO',
+                    s.fecha=coalesce(s.fecha,date($fecha_iso)),
+                    s.monto=coalesce(s.monto,toFloat($monto)),
+                    s.descripcion=coalesce(s.descripcion,$desc)
+      MERGE (p)-[:TIENE]->(s)
+      `,
+      {
+        pid: String(nro_poliza),
+        sid: String(r.insertedId),
+        id_sin: doc.id_siniestro,
+        tipo: doc.tipo,
+        fecha_iso: formatDateToISO(doc.fecha),
+        monto: doc.monto_estimado,
+        desc: doc.descripcion
+      }
+    );
+  } catch (e) {
+    await db.collection('siniestros').updateOne({ _id: r.insertedId }, { $set: { _neo4j_sync_error: true } });
+    return res.status(500).json({ error: 'neo4j_write_failed' });
+  } finally {
+    await s.close();
+  }
+
+  res.status(201).json({ _id: r.insertedId, ...doc });
+});
 
 const port = process.env.PORT;
 app.listen(port, () => console.log(`API :${port}`));
