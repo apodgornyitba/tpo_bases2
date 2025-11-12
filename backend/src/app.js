@@ -244,6 +244,47 @@ app.patch('/clientes/:id/baja', async (req, res) => {
   res.json({ ok: true });
 });
 
+// Modificación parcial de cliente
+app.patch('/clientes/:id', async (req, res) => {
+  const raw = req.params.id;
+  const idc = Number.isNaN(Number(raw)) ? String(raw) : Number(raw);
+
+  const { nombre, apellido, dni, email, telefono, direccion, ciudad, provincia, activo } = req.body || {};
+  const update = {};
+  if (nombre != null)    update.nombre    = String(nombre);
+  if (apellido != null)  update.apellido  = String(apellido);
+  if (dni !== undefined) update.dni       = dni ?? null;
+  if (email !== undefined) update.email   = email ?? null;
+  if (telefono !== undefined) update.telefono = telefono ?? null;
+  if (direccion !== undefined) update.direccion = direccion ?? null;
+  if (ciudad !== undefined) update.ciudad = ciudad ?? null;
+  if (provincia !== undefined) update.provincia = provincia ?? null;
+  if (activo !== undefined) update.activo = asBool(activo);
+
+  if (Object.keys(update).length === 0) return res.status(400).json({ error: 'sin_cambios' });
+  if ('id_cliente' in req.body)         return res.status(400).json({ error: 'id_no_editable' });
+
+  const r = await db.collection('clientes').findOneAndUpdate(
+    { id_cliente: idc },
+    { $set: update },
+    { returnDocument: 'after', projection: { _id: 0 } }
+  );
+
+  if (!r.value) return res.status(404).json({ error: 'cliente_no_encontrado' });
+
+  try {
+    const s = neo4jSession();
+    await s.run(
+      `MERGE (c:Cliente {id:$id})
+       SET c.nombre = coalesce($nombre, c.nombre),
+           c.apellido = coalesce($apellido, c.apellido)`,
+      { id: String(idc), nombre, apellido }
+    );
+    await s.close();
+  } catch (_) {}
+
+  res.json(r.value);
+});
 
 
 const port = process.env.PORT;
