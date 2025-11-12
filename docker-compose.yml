@@ -36,6 +36,7 @@ services:
       context: ./backend
     environment:
       PORT: 3000
+      MONGO_URI: mongodb://mongo:27017/aseguradoras
     ports:
       - "3000:3000"
     depends_on:
