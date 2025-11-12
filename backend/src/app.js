@@ -548,6 +548,16 @@ app.get('/vehiculos/asegurados', async (req, res) => {
                 polizas: '$polizas_vigentes'
             }
         }
+        ,
+        { $group: {
+            _id: '$patente',
+            patente: { $first: '$patente' },
+            marca: { $first: '$marca' },
+            modelo: { $first: '$modelo' },
+            cliente: { $first: '$cliente' },
+            polizas: { $first: '$polizas' }
+        } },
+        { $project: { _id: 0, marca: 1, modelo: 1, patente: 1, cliente: 1, polizas: 1 } }
     ]);
     res.json(await cur.toArray());
 });
@@ -590,6 +600,8 @@ app.get('/agentes/activos-con-cant-polizas', async (req, res) => {
         { $match: { activo_norm: true } },
         { $lookup: { from: 'polizas', localField: 'id_agente', foreignField: 'id_agente', as: 'p' } },
         { $project: { _id: 0, id_agente: 1, nombre: 1, cant_polizas: { $size: '$p' } } },
+        { $group: { _id: '$id_agente', id_agente: { $first: '$id_agente' }, nombre: { $first: '$nombre' }, cant_polizas: { $first: '$cant_polizas' } } },
+        { $project: { _id: 0, id_agente: 1, nombre: 1, cant_polizas: 1 } },
         { $sort: { cant_polizas: -1, id_agente: 1 } }
     ]);
     res.json(await cur.toArray());
@@ -615,6 +627,8 @@ app.get('/polizas/vencidas-con-cliente', async (req, res) => {
                 cliente: { id: '$c.id_cliente', nombre: '$c.nombre', apellido: '$c.apellido' }
             }
         },
+        { $group: { _id: '$nro_poliza', nro_poliza: { $first: '$nro_poliza' }, tipo: { $first: '$tipo' }, fecha_fin: { $first: '$fecha_fin' }, cliente: { $first: '$cliente' } } },
+        { $project: { _id: 0, nro_poliza: 1, tipo: 1, fecha_fin: 1, cliente: 1 } },
         { $sort: { fecha_fin: -1 } }
     ]);
     res.json(await cur.toArray());
@@ -642,6 +656,9 @@ app.get('/clientes/top-cobertura', async (req, res) => {
                 cobertura_total: 1
             }
         }
+        ,
+        { $group: { _id: '$id_cliente', id_cliente: { $first: '$id_cliente' }, nombre: { $first: '$nombre' }, apellido: { $first: '$apellido' }, cobertura_total: { $first: '$cobertura_total' } } },
+        { $project: { _id: 0, id_cliente: 1, nombre: 1, apellido: 1, cobertura_total: 1 } }
     ]);
     res.json(await cur.toArray());
 });
@@ -717,6 +734,9 @@ app.get('/polizas/suspendidas-con-estado-cliente', async (req, res) => {
                 }
             }
         }
+        ,
+        { $group: { _id: '$nro_poliza', nro_poliza: { $first: '$nro_poliza' }, tipo: { $first: '$tipo' }, estado: { $first: '$estado' }, cliente: { $first: '$cliente' } } },
+        { $project: { _id: 0, nro_poliza: 1, tipo: 1, estado: 1, cliente: 1 } }
     ]);
     res.json(await cur.toArray());
 });
