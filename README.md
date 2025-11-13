@@ -132,6 +132,14 @@ make import-csv
 make etl-neo4j
 ```
 
+## Documentación del trabajo
+
+El informe completo de justificación de bases de datos, junto con los esquemas lógico y físico, se encuentra en la carpeta [`docs/`](./docs).  
+- 📘 [`INFORME_Bases_Justificacion.md`](./docs/INFORME_Bases_Justificacion.md) — explicación y motivación de las tecnologías utilizadas.  
+- 📎 [`Trabajo_Practico_Aseguradoras_2025-2.pdf`](./docs/Trabajo_Practico_Aseguradoras_2025-2.pdf) — consigna original del trabajo práctico.  
+- 🖼️ Diagramas en [`docs/imgs/`](./docs/imgs) — esquemas de MongoDB y Neo4j.
+
+
 ## Licencia y contacto
 Este proyecto es para fines educativos/prototipo. Para dudas o pedidos de
 mejoras abre un issue o contacta al mantenedor del repositorio.

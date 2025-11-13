@@ -1,2 +1,6 @@
 backend/node_modules/*
 backend/package-lock.json
+__pycache__/
+*.log
+node_modules/
+.DS_Store
