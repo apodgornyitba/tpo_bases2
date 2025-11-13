@@ -185,9 +185,11 @@ app.get('/clientes/activos-con-polizas', async (req, res) => {
         }
     ];
 
+    const baseFiltered = [...base, { $match: { "polizas_vigentes.0": { $exists: true } } }];
+
     const [items, total] = await Promise.all([
-        db.collection('clientes').aggregate([...base, { $skip: skip }, { $limit: pageSize }]).toArray(),
-        db.collection('clientes').aggregate([...base, { $count: "n" }]).toArray()
+        db.collection('clientes').aggregate([...baseFiltered, { $skip: skip }, { $limit: pageSize }]).toArray(),
+        db.collection('clientes').aggregate([...baseFiltered, { $count: "n" }]).toArray()
     ]);
 
     res.json({ page, pageSize, total: total[0]?.n || 0, items });
@@ -238,7 +240,7 @@ app.post('/clientes', async (req, res) => {
     }
 
     const idc = Number.isNaN(Number(id_cliente)) ? String(id_cliente) : Number(id_cliente);
-    const exists = await db.collection('clientes').findOne({ id_cliente: idc });
+    const exists = await db.collection('clientes').findOne({ id_cliente: { $in: [idc, String(idc)] } });
     if (exists) return res.status(409).json({ error: 'cliente_ya_existe' });
 
     const doc = {
@@ -286,7 +288,7 @@ app.post('/polizas', async (req, res) => {
     const cid = Number.isNaN(Number(id_cliente)) ? String(id_cliente) : Number(id_cliente);
     const aid = Number.isNaN(Number(id_agente)) ? String(id_agente) : Number(id_agente);
 
-    const c = await db.collection('clientes').findOne({ id_cliente: cid });
+    const c = await db.collection('clientes').findOne({ id_cliente: { $in: [cid, String(cid)] } });
     const a = await db.collection('agentes').findOne({ id_agente: aid });
 
     if (!c) return res.status(400).json({ error: 'cliente_inexistente' });
@@ -363,7 +365,7 @@ app.patch('/clientes/:id/baja', async (req, res) => {
     const idc = Number.isNaN(Number(raw)) ? String(raw) : Number(raw);
 
     const r = await db.collection('clientes').updateOne(
-        { id_cliente: idc },
+        { id_cliente: { $in: [idc, String(idc)] } },
         { $set: { activo: false } }
     );
     if (r.matchedCount === 0) return res.status(404).json({ error: 'cliente_no_encontrado' });
@@ -397,13 +399,15 @@ app.patch('/clientes/:id', async (req, res) => {
     if (Object.keys(update).length === 0) return res.status(400).json({ error: 'sin_cambios' });
     if ('id_cliente' in req.body) return res.status(400).json({ error: 'id_no_editable' });
 
+    const filter = { id_cliente: { $in: [idc, String(idc)] } };
     const r = await db.collection('clientes').findOneAndUpdate(
-        { id_cliente: idc },
+        filter,
         { $set: update },
         { returnDocument: 'after', projection: { _id: 0 } }
     );
 
-    if (!r.value) return res.status(404).json({ error: 'cliente_no_encontrado' });
+    const updated = r && (r.value !== undefined ? r.value : r);
+    if (!updated) return res.status(404).json({ error: 'cliente_no_encontrado' });
 
     try {
         const s = neo4jSession();
@@ -416,7 +420,7 @@ app.patch('/clientes/:id', async (req, res) => {
         await s.close();
     } catch (_) { }
 
-    res.json(r.value);
+    res.json(updated);
 });
 
 // Alta de siniestro con doble write (Mongo -> Neo4j)
