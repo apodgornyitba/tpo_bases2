@@ -750,11 +750,26 @@ app.get('/clientes/con-multiples-vehiculos', async (req, res) => {
     const cur = db.collection('vehiculos').aggregate([
         { $addFields: { asegurado_norm: { $in: [{ $toLower: { $toString: "$asegurado" } }, ["true", "1", "yes", "y", "t", "si", "sí"]] } } },
         { $match: { asegurado_norm: true } },
-        { $group: { _id: '$id_cliente', cant: { $sum: 1 } } },
+        { $group: { _id: { $toString: '$id_cliente' }, cant: { $sum: 1 } } },
         { $match: { cant: { $gt: 1 } } },
-        { $lookup: { from: 'clientes', localField: '_id', foreignField: 'id_cliente', as: 'c' } },
+        { $lookup: {
+            from: 'clientes',
+            let: { cid: '$_id' },
+            pipeline: [
+                { $addFields: { id_cliente_str: { $toString: '$id_cliente' } } },
+                { $match: { $expr: { $eq: ['$id_cliente_str', '$$cid'] } } },
+                { $project: { id_cliente: 1, nombre: 1, apellido: 1 } }
+            ],
+            as: 'c'
+        } },
         { $unwind: { path: '$c', preserveNullAndEmptyArrays: true } },
-        { $project: { _id: 0, id_cliente: '$_id', nombre: '$c.nombre', apellido: '$c.apellido', cant_vehiculos: '$cant' } },
+        { $project: { 
+            _id: 0,
+            id_cliente: { $convert: { input: '$_id', to: 'int', onError: '$_id', onNull: '$_id' } },
+            nombre: '$c.nombre',
+            apellido: '$c.apellido',
+            cant_vehiculos: '$cant'
+        } },
         { $sort: { cant_vehiculos: -1, id_cliente: 1 } }
     ]);
     res.json(await cur.toArray());
