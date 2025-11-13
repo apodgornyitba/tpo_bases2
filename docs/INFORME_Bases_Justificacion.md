@@ -120,19 +120,19 @@ Estas representaciones permiten visualizar la correspondencia entre las entidade
 
 ### MongoDB — Esquema Lógico
 <p align="center">
-  <img src="./imgs/mongo_logico.png" alt="Esquema lógico MongoDB" width="720">
+  <img src="./imgs/mongo_logico.png" alt="Esquema lógico MongoDB" width="550">
 </p>
 <p align="center"><em>Fig. 1 — Esquema lógico de colecciones y referencias</em></p>
 
 ### MongoDB — Esquema Físico
 <p align="center">
-  <img src="./imgs/mongo_fisico.png" alt="Esquema físico MongoDB" width="640">
+  <img src="./imgs/mongo_fisico.png" alt="Esquema físico MongoDB" width="520">
 </p>
 <p align="center"><em>Fig. 2 — Campos clave e índices/“FKs” lógicas</em></p>
 
 ### Neo4j — Esquema Lógico/Físico
 <p align="center">
-  <img src="./imgs/neo_logico_fisico.png" alt="Esquema lógico-físico Neo4j" width="720">
+  <img src="./imgs/neo_logico_fisico.png" alt="Esquema lógico-físico Neo4j" width="550">
 </p>
 <p align="center"><em>Fig. 3 — Nodos, propiedades y relaciones con constraints</em></p>
 
