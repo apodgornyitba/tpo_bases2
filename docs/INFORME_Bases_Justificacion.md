@@ -546,7 +546,7 @@ curl -s "http://localhost:3000/polizas/suspendidas-con-estado-cliente" | jq
          "id":13,
          "nombre":"Cándida",
          "apellido":"Adán",
-         "activo":"True"
+         "activo": true
          }
    },
    ...

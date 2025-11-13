@@ -734,7 +734,7 @@ app.get('/polizas/suspendidas-con-estado-cliente', async (req, res) => {
                     id: '$c.id_cliente',
                     nombre: '$c.nombre',
                     apellido: '$c.apellido',
-                    activo: '$c.activo'
+                    activo: { $in: [ { $toLower: { $toString: '$c.activo' } }, ["true", "1", "yes", "y", "t", "si", "sí"] ] }
                 }
             }
         }
