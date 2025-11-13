@@ -439,10 +439,14 @@ app.post('/siniestros', async (req, res) => {
     }
 
     const hoy = new Date();
+    const todayISO = formatDateToISO();
+    const fechaISO = fecha ? toISO(fecha) : todayISO;
+    if (fecha && !fechaISO) return res.status(400).json({ error: 'fecha_invalida' });
+
     const doc = {
-        id_siniestro: await db.collection('siniestros').countDocuments() + 9001, // simple correlativo local
+        id_siniestro: await db.collection('siniestros').countDocuments() + 9001,
         nro_poliza: String(nro_poliza),
-        fecha: fecha ?? `${hoy.getDate()}/${hoy.getMonth() + 1}/${hoy.getFullYear()}`, // dd/m/yyyy
+        fecha: fechaISO,
         tipo: String(tipo),
         monto_estimado: monto_estimado != null ? Number(monto_estimado) : null,
         descripcion: descripcion ?? null,

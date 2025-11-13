@@ -318,7 +318,7 @@ curl -s -X POST http://localhost:3000/siniestros \
   "_id": "691515b284d56aea3c4a5178",
   "id_siniestro": 9081,
   "nro_poliza": "POL1001",
-  "fecha": "12/11/2025",
+  "fecha": "2025-11-12",
   "tipo": "Robo",
   "monto_estimado": 123456,
   "descripcion": "Robo de auto",
