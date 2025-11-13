@@ -91,21 +91,18 @@ Esta combinación responde a los requisitos funcionales y no funcionales del enu
   - Siniestros: índices por `poliza_id`, `tipo`, `fecha`.
   - Clientes: índice por `id_cliente` y por `dni` si se requiere búsqueda rápida.
 
-Las colecciones y sus relaciones principales pueden observarse en el **esquema lógico de MongoDB** (ver Fig. 1), donde se muestra la estructura documental y las referencias entre entidades.  
-Los campos clave, índices definidos e identificadores únicos se detallan en el **esquema físico de MongoDB** (ver Fig. 2), que complementa la definición de las colecciones.
-
 - Normalización vs Denormalización:
   - Se optó por mantener referencias (`id_cliente` en polizas, `poliza_id` en siniestros) en lugar de duplicar datos en cascada. Esto mantiene la fuente de verdad en un sitio y evita inconsistencias.
 
-  #### **Esquema Lógico MongoDB**
+#### **Esquema Lógico MongoDB**
 
-![Esquema Lógico MongoDB](./mongo_logico.png)
+![Esquema Lógico MongoDB](./docs/imgs/mongo_logico.png)
 
 *Figura 1: Modelo de datos documental en MongoDB mostrando las colecciones principales y sus relaciones mediante claves foráneas. Cada colección mantiene su integridad referencial a través de campos de referencia (FK).*
 
 #### **Esquema Físico MongoDB**
 
-![Esquema Físico MongoDB](./mongo_fisico.png)
+![Esquema Físico MongoDB](./docs/imgs/mongo_fisico.png)
 
 *Figura 2: Representación física de las relaciones en MongoDB. Las referencias entre documentos se implementan mediante campos FK que apuntan a los identificadores únicos de otras colecciones.*
 
@@ -117,24 +114,18 @@ Los campos clave, índices definidos e identificadores únicos se detallan en el
   - (Cliente)-[:CONTRATA]->(Poliza)
   - (Agente)-[:GESTIONA]->(Poliza)
   - (Poliza)-[:TUVO]->(Siniestro)
-
-El modelo de grafo adoptado se resume en la **Fig. 3**, que muestra los nodos principales, los tipos de relación y las propiedades clave definidas mediante constraints en Neo4j.  
-En este diseño se reflejan las asociaciones más relevantes del dominio (cliente–póliza–vehículo–siniestro–agente), optimizadas para consultas por patrones y recorridos.
-
 - Identificadores:
   - Cada nodo tiene propiedad `id` con el id lógico (ej. `id_cliente`, `nro_poliza`, `id_siniestro`) y se definieron constraints de unicidad via `scripts/neo4j/init.cypher`.
 
+#### **Esquema Lógico Neo4j**
 
-#### **Esquema Neo4j**
-
-![Esquema Lógico Neo4j](./neo_logico_fisico.png)
+![Esquema Lógico Neo4j](./docs/imgs/neo_logico_fisico.png)
 
 *Figura 3: Modelo de grafo en Neo4j donde las entidades se representan como nodos y las asociaciones como relaciones dirigidas y etiquetadas. Este diseño facilita las consultas de travesía y análisis de patrones relacionales.*
 
-## Estrategia ETL / sincronización
 
-El proceso de sincronización se basa en los modelos representados en las Fig. 1 a 3, donde se ilustra la estructura de datos de origen (MongoDB) y su proyección equivalente en Neo4j.  
-De esta forma, el flujo ETL mantiene coherencia directa entre el modelo documental y el modelo de grafo.
+
+## Estrategia ETL / sincronización
 
 - Flujo: los datos se escriben en Mongo (fuente principal). Un job ETL (por lotes o por inserción) proyecta/actualiza nodos y relaciones en Neo4j.
 - Dual-write para operaciones en tiempo real: la API primero escribe en Mongo y luego intenta proyectar a Neo4j; en caso de error se marca el documento con un campo de error para reconciliación posterior.
@@ -145,10 +136,11 @@ De esta forma, el flujo ETL mantiene coherencia directa entre el modelo document
 
 En MongoDB, se definieron índices sobre los campos más utilizados en filtros y ordenamientos —como fecha_inicio, fecha_fin y estado— para evitar recorridos completos de las colecciones y mejorar el rendimiento de las consultas.
 Además, se usan índices compuestos en los casos donde las búsquedas combinan varios criterios (por ejemplo, cliente y número de póliza).
+Se recomienda monitorear periódicamente la selectividad de los índices y la cardinalidad de los datos para mantener un buen desempeño. Los índices de texto solo deberían agregarse si se incorporan búsquedas textuales.
 Respecto a la escalabilidad, MongoDB puede crecer tanto vertical como horizontalmente: mediante réplicas para mejorar la disponibilidad o sharding si el volumen de datos o tráfico aumenta. Para el contexto del trabajo práctico, la configuración actual es más que suficiente.
 
 En Neo4j, se aplicaron constraints e índices sobre las propiedades clave (como identificadores de nodos) para acelerar las búsquedas y garantizar unicidad.
-En sistemas con grafos muy grandes o relaciones muy densas, se recomienda escalar verticalmente (más CPU y memoria). Nuevamente, la configuración actual para el trabajo realizado se considera suficiente.
+En sistemas con grafos muy grandes o relaciones muy densas, se recomienda escalar verticalmente (más CPU y memoria). Si el sistema creciera hacia un entorno productivo con requerimientos de alta disponibilidad, Neo4j Enterprise ofrece soporte para clustering y balanceo de carga entre nodos.
 
 ## Alternativas consideradas
 
@@ -343,7 +335,7 @@ curl -s -X PATCH http://localhost:3000/clientes/<ID_CLIENTE>/baja | jq
 curl -s -X PATCH "http://localhost:3000/clientes/<ID_CLIENTE>" \
   -H "Content-Type: application/json" \
   -d '{
-    "nombre": "<NOMBRE>", "apellido": "<APELLIDO>","dni": "<DNI>",
+    "nombre": "<NOMBRE>", apellido": "<APELLIDO>","dni": "<DNI>",
     "email": "<EMAIL>","telefono": "<TELEFONO>", "direccion": "<DIRECCION>",
     "ciudad": "<CIUDAD>","provincia": "<PROVINCIA>"
   }' | jq
