@@ -97,18 +97,6 @@ Los campos clave, índices definidos e identificadores únicos se detallan en el
 - Normalización vs Denormalización:
   - Se optó por mantener referencias (`id_cliente` en polizas, `poliza_id` en siniestros) en lugar de duplicar datos en cascada. Esto mantiene la fuente de verdad en un sitio y evita inconsistencias.
 
-  #### **Esquema Lógico MongoDB**
-
-![Esquema Lógico MongoDB](./mongo_logico.png)
-
-*Figura 1: Modelo de datos documental en MongoDB mostrando las colecciones principales y sus relaciones mediante claves foráneas. Cada colección mantiene su integridad referencial a través de campos de referencia (FK).*
-
-#### **Esquema Físico MongoDB**
-
-![Esquema Físico MongoDB](./mongo_fisico.png)
-
-*Figura 2: Representación física de las relaciones en MongoDB. Las referencias entre documentos se implementan mediante campos FK que apuntan a los identificadores únicos de otras colecciones.*
-
 **Neo4j (grafo proyectado)**
 
 - Nodos: `Cliente`, `Poliza`, `Vehiculo`, `Agente`, `Siniestro`.
@@ -125,11 +113,29 @@ En este diseño se reflejan las asociaciones más relevantes del dominio (client
   - Cada nodo tiene propiedad `id` con el id lógico (ej. `id_cliente`, `nro_poliza`, `id_siniestro`) y se definieron constraints de unicidad via `scripts/neo4j/init.cypher`.
 
 
-#### **Esquema Neo4j**
+## Esquemas de Datos
 
-![Esquema Lógico Neo4j](./neo_logico_fisico.png)
+En las siguientes figuras se presentan los esquemas resultantes de las decisiones de modelado descritas anteriormente, distinguiendo entre el nivel lógico y el físico para cada base de datos.  
+Estas representaciones permiten visualizar la correspondencia entre las entidades del dominio y su implementación en MongoDB y Neo4j.
 
-*Figura 3: Modelo de grafo en Neo4j donde las entidades se representan como nodos y las asociaciones como relaciones dirigidas y etiquetadas. Este diseño facilita las consultas de travesía y análisis de patrones relacionales.*
+### MongoDB — Esquema Lógico
+<p align="center">
+  <img src="./imgs/mongo_logico.png" alt="Esquema lógico MongoDB" width="720">
+</p>
+<p align="center"><em>Fig. 1 — Esquema lógico de colecciones y referencias</em></p>
+
+### MongoDB — Esquema Físico
+<p align="center">
+  <img src="./imgs/mongo_fisico.png" alt="Esquema físico MongoDB" width="640">
+</p>
+<p align="center"><em>Fig. 2 — Campos clave e índices/“FKs” lógicas</em></p>
+
+### Neo4j — Esquema Lógico/Físico
+<p align="center">
+  <img src="./imgs/neo_logico_fisico.png" alt="Esquema lógico-físico Neo4j" width="720">
+</p>
+<p align="center"><em>Fig. 3 — Nodos, propiedades y relaciones con constraints</em></p>
+
 
 ## Estrategia ETL / sincronización
 
