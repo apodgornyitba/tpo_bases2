@@ -110,17 +110,17 @@ Esta combinación responde a los requisitos funcionales y no funcionales del enu
 - Flujo: los datos se escriben en Mongo (fuente principal). Un job ETL (por lotes o por inserción) proyecta/actualiza nodos y relaciones en Neo4j.
 - Dual-write para operaciones en tiempo real: la API primero escribe en Mongo y luego intenta proyectar a Neo4j; en caso de error se marca el documento con un campo de error para reconciliación posterior.
 - Lotes: el job `src/jobs/etl_mongo_to_neo4j.js` lee en lotes y ejecuta transacciones en Neo4j para crear/mergear nodos/relaciones de forma eficiente.
-- Consistencia: se asume consistencia eventual entre Mongo y Neo4j. Para necesidades de consistencia estricta (p. ej. operación que requiere ambas escrituras atómicas), recomendaría mecanismos transaccionales o un coordinador de compensaciones (saga pattern).
+- Consistencia: se asume consistencia eventual entre Mongo y Neo4j. Para necesidades de consistencia estricta (p. ej. operación que requiere ambas escrituras atómicas), se recomiendan mecanismos transaccionales o un coordinador de compensaciones (saga pattern).
 
 ## Índices, rendimiento y escalabilidad
 
-- Mongo:
-  - Índices adecuados para filtros y `sort` (fecha_inicio, fecha_fin, estado). Los índices compuestos evitan escaneos completos.
-  - Recomendación: vigilar selectividad de índices y cardinalidad; agregar índices de texto solo si se requieren búsquedas por texto.
-  - Escalado: escalar lectura/escritura con réplicas y particionado (sharding) si la carga lo exige; diseño actual es suficiente para prototipo y volúmenes modestos.
-- Neo4j:
-  - Constraints y propiedades indexadas para búsquedas por id.
-  - Escalado vertical recomendado para grafos densos; Neo4j Enterprise ofrece clustering para alta disponibilidad si se necesita en producción.
+En MongoDB, se definieron índices sobre los campos más utilizados en filtros y ordenamientos —como fecha_inicio, fecha_fin y estado— para evitar recorridos completos de las colecciones y mejorar el rendimiento de las consultas.
+Además, se usan índices compuestos en los casos donde las búsquedas combinan varios criterios (por ejemplo, cliente y número de póliza).
+Se recomienda monitorear periódicamente la selectividad de los índices y la cardinalidad de los datos para mantener un buen desempeño. Los índices de texto solo deberían agregarse si se incorporan búsquedas textuales.
+Respecto a la escalabilidad, MongoDB puede crecer tanto vertical como horizontalmente: mediante réplicas para mejorar la disponibilidad o sharding si el volumen de datos o tráfico aumenta. Para el contexto del trabajo práctico, la configuración actual es más que suficiente.
+
+En Neo4j, se aplicaron constraints e índices sobre las propiedades clave (como identificadores de nodos) para acelerar las búsquedas y garantizar unicidad.
+En sistemas con grafos muy grandes o relaciones muy densas, se recomienda escalar verticalmente (más CPU y memoria). Si el sistema creciera hacia un entorno productivo con requerimientos de alta disponibilidad, Neo4j Enterprise ofrece soporte para clustering y balanceo de carga entre nodos.
 
 ## Alternativas consideradas
 
@@ -160,4 +160,424 @@ Si bien las alternativas pueden aportar ventajas, estas se presentan en casos MU
 - Consistencia eventual entre Mongo y Neo4j implica diseñar correctamente la reconciliación y advertir sobre ventanas donde Neo4j y Mongo divergen.
 - Para workloads con alto volumen de relaciones dinámicas, mantener la proyección en tiempo real (dual-write) puede exigir robustecer la infraestructura.
 
+## Comandos `curl` y Resultados
+
+A continuación se muestran los comandos `curl` que permiten verificar el cumplimiento de todos los servicios y consultas requeridos en el Trabajo Práctico.  
+Cada comando puede ejecutarse directamente sobre la API desplegada en `http://localhost:3000`, utilizando `jq` para formatear la salida JSON.
+
+---
+
+### **1. Clientes activos con pólizas vigentes**
+
+```bash
+curl -s "http://localhost:3000/clientes/activos-con-polizas" | jq
+```
+
+**Resultado:**
+```json
+{
+  "page": 1,
+  "pageSize": 25,
+  "total": 35,
+  "items": [
+    {
+      "id_cliente": 10,
+      "nombre": "Anastasia",
+      "apellido": "Vives",
+      "polizas_vigentes": [
+        {
+          "_id": "691512b716d7a40aa144b30b",
+          "nro_poliza": "POL1010",
+          "tipo": "Auto",
+          "estado": "ACTIVA",
+          "fecha_inicio": "2024-11-21",
+          "fecha_fin": "2025-11-21"
+        }
+      ]
+    },
+    ...
+  ]
+}
+```
+
+---
+
+### **2. Siniestros abiertos (o cerrados entre fechas)**
+
+```bash
+curl -s "http://localhost:3000/siniestros/abiertos" | jq
+```
+
+**Resultado:**
+```json
+[
+  {
+    "cliente_id": "5",
+    "poliza_id": "POL1005",
+    "siniestro_id": "691512b704b4a40473b78f86",
+    "tipo": "Danio",
+    "monto": 151500,
+    "fecha": "2025-05-17"
+  },
+  ...
+]
+```
+
+```bash
+curl -s "http://localhost:3000/siniestros/abiertos?estado=<ESTADO>&desde=<YYYY-MM-DD>&hasta=<YYYY-MM-DD>" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+    "cliente_id": "4",
+    "poliza_id": "POL1004",
+    "siniestro_id": "691512b704b4a40473b78f85",
+    "tipo": "Robo",
+    "monto": 301500,
+    "fecha": "2024-08-25"
+  },
+  ...
+]
+```
+---
+
+### **3. Alta de cliente**
+
+```bash
+curl -s -X POST http://localhost:3000/clientes \
+  -H "Content-Type: application/json" \
+  -d '{"id_cliente":<ID>,"nombre":"<Nombre>","apellido":"<Apellido>","email":"<Email>"}' | jq
+```
+
+**Resultado:**
+```json
+{
+  "_id": "6915159084d56aea3c4a5177",
+  "id_cliente": 9999,
+  "nombre": "Ana",
+  "apellido": "Test",
+  "dni": null,
+  "email": "ana@test.com",
+  "telefono": null,
+  "direccion": null,
+  "ciudad": null,
+  "provincia": null,
+  "activo": true
+}
+```
+
+---
+
+### **4. Alta de siniestro**
+
+```bash
+curl -s -X POST http://localhost:3000/siniestros \
+  -H "Content-Type: application/json" \
+  -d '{"nro_poliza":"<NRO_POLIZA>","tipo":"<Tipo>","descripcion":"<Texto>","monto_estimado":<Monto>}' | jq
+```
+
+**Resultado:**
+```json
+{
+  "_id": "691515b284d56aea3c4a5178",
+  "id_siniestro": 9081,
+  "nro_poliza": "POL1001",
+  "fecha": "12/11/2025",
+  "tipo": "Robo",
+  "monto_estimado": 123456,
+  "descripcion": "Robo de auto",
+  "estado": "Abierto"
+}
+```
+
+---
+
+### **5. Dar de baja cliente**
+
+```bash
+curl -s -X PATCH http://localhost:3000/clientes/<ID_CLIENTE>/baja | jq
+```
+
+**Resultado:**
+```json
+{
+  "ok": true
+}
+```
+
+---
+
+### **6. Modificar datos parciales de cliente**
+
+```bash
+curl -s -X PATCH "http://localhost:3000/clientes/<ID_CLIENTE>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nombre": "<NOMBRE>", apellido": "<APELLIDO>","dni": "<DNI>",
+    "email": "<EMAIL>","telefono": "<TELEFONO>", "direccion": "<DIRECCION>",
+    "ciudad": "<CIUDAD>","provincia": "<PROVINCIA>"
+  }' | jq
+```
+
+**Resultado:**
+```json
+{
+  "id_cliente": 99999,
+  "nombre": "Ana",
+  "apellido": "Test",
+  "dni": null,
+  "email": "ana@test.com",
+  "telefono": "01223334444",
+  "direccion": "Direccion cambiada",
+  "ciudad": null,
+  "provincia": null,
+  "activo": true
+}
+```
+
+---
+
+### **7. Consultas avanzadas (MongoDB)**
+
+**Vehículos asegurados**
+```bash
+curl -s "http://localhost:3000/vehiculos/asegurados" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+      "patente":"VP752BU",
+      "marca":"Volkswagen",
+      "modelo":"Gol",
+      "cliente":
+      {
+         "id":149,
+         "nombre":"Sandra",
+         "apellido":"Gilabert"
+      },
+      "polizas":
+      [
+         {
+            "nro_poliza":"POL1149",
+            "tipo":"Auto",
+            "fecha_inicio":"2025-03-02",
+            "fecha_fin":"2026-03-02"
+         }
+      ]
+   },
+   ...
+]
+```
+
+**Clientes sin pólizas activas**
+```bash
+curl -s "http://localhost:3000/clientes/sin-polizas-activas" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+      "id_cliente":18,
+      "nombre":"Ricardo",
+      "apellido":"Barral"
+   },
+   ...
+]
+```
+
+**Agentes activos con cantidad de pólizas**
+```bash
+curl -s "http://localhost:3000/agentes/activos-con-cant-polizas" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+      "id_agente":102,
+      "nombre":"María",
+      "cant_polizas":44
+   },
+   ...
+]
+```
+
+**Pólizas vencidas con cliente**
+```bash
+curl -s "http://localhost:3000/polizas/vencidas-con-cliente" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+      "nro_poliza":"POL1124",
+      "tipo":"Auto",
+      "fecha_fin":"2026-02-25",
+      "cliente":{
+         "id":124,
+         "nombre":"Darío",
+         "apellido":"Villena"
+         }
+   },
+   ...
+]
+```
+
+**Clientes top por cobertura**
+```bash
+curl -s "http://localhost:3000/clientes/top-cobertura" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+   "id_cliente":54,
+   "nombre":"Ainara",
+   "apellido":"Santana",
+   "cobertura_total":2500000
+   },  
+   ...
+]
+```
+
+---
+
+### **8. Consultas avanzadas (Neo4j)**
+
+**Siniestros tipo "Accidente" del último año**
+```bash
+curl -s "http://localhost:3000/siniestros/accidente-ultimo-anio" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+      "cliente_id":"2",
+      "poliza_id":"POL1002",
+      "siniestro_id":"691512b704b4a40473b78f84",
+      "fecha":"2025-04-04"
+   },
+   ...
+]
+```
+
+**Pólizas activas ordenadas**
+```bash
+curl -s "http://localhost:3000/polizas/activas-ordenadas" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+   "page":1,
+   "pageSize":25,
+   "total":52,
+   "items":
+      [
+         {
+            "nro_poliza":"POL1010",
+            "tipo":"Auto",
+            "fecha_inicio":"2024-11-21",
+            "fecha_fin":"2025-11-21",
+            "estado":"ACTIVA"
+         },
+         ...
+      ]  
+   }
+]
+```
+
+**Pólizas suspendidas con estado de cliente**
+```bash
+curl -s "http://localhost:3000/polizas/suspendidas-con-estado-cliente" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+      "nro_poliza":"POL1013",
+      "tipo":"Auto",
+      "estado":"SUSPENDIDA",
+      "cliente":{
+         "id":13,
+         "nombre":"Cándida",
+         "apellido":"Adán",
+         "activo":"True"
+         }
+   },
+   ...
+]
+```
+
+**Clientes con múltiples vehículos**
+```bash
+curl -s "http://localhost:3000/clientes/con-multiples-vehiculos" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+    "id_cliente": <ID>,
+    "nombre": <NOMBRE>,
+    "apellido": <APELLIDO>,
+    "cant_vehiculos": <CANTIDAD>
+  }
+]
+```
+
+**Agentes con cantidad de siniestros**
+```bash
+curl -s "http://localhost:3000/agentes/cant-siniestros" | jq
+```
+
+**Resultado:**
+```json
+[
+   {
+      "id_agente":"102",
+      "cant_siniestros":{
+         "low":22,
+         "high":0
+      }
+   },
+   ...
+]
+```
+
+---
+
+### **9. Emisión de nueva póliza (validando cliente y agente)**
+
+```bash
+curl -s -X POST http://localhost:3000/polizas \
+  -H "Content-Type: application/json" \
+  -d '{"nro_poliza":<POLIZA>,"id_cliente":<ID>,"id_agente":<ID>,"tipo":"<Tipo>","fecha_inicio":"<YYYY-MM-DD>","fecha_fin":"<YYYY-MM-DD>"}' | jq
+```
+
+**Resultado:**
+```json
+{
+  "nro_poliza": "POL3001",
+  "id_cliente": 99999,
+  "id_agente": 102,
+  "tipo": "Auto",
+  "fecha_inicio": "2025-01-15",
+  "fecha_fin": "2026-01-15",
+  "prima_mensual": null,
+  "cobertura_total": null,
+  "estado": "ACTIVA",
+  "_id": "69151c04db58aabffe1977f9"
+}
+```
 
