@@ -6,7 +6,6 @@ const db = db.getSiblingDB(dbName);
     if (!db.getCollectionNames().includes(c)) db.createCollection(c);
 });
 
-
 // clientes
 db.clientes.createIndex({ id_cliente: 1 });
 

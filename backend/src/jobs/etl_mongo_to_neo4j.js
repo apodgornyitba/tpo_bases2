@@ -162,8 +162,6 @@ async function flushSiniestros(rows, idMap) {
     }
 }
 
-
-
 async function main() {
     await client.connect();
     console.log('[ETL] Mongo OK');
