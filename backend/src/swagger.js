@@ -82,7 +82,27 @@ const swaggerSpec = {
         tags: ['clientes'],
         summary: 'Modificar cliente (parcial)',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } },
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  nombre: { type: 'string' },
+                  apellido: { type: 'string' },
+                  dni: { type: 'string' },
+                  email: { type: 'string', format: 'email' },
+                  telefono: { type: 'string' },
+                  direccion: { type: 'string' },
+                  ciudad: { type: 'string' },
+                  provincia: { type: 'string' }
+                },
+                additionalProperties: false
+              }
+            }
+          }
+        },
         responses: { '200': { description: 'Cliente actualizado' }, '400': { description: 'Bad request' } }
       }
     },
