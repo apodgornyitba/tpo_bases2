@@ -80,6 +80,13 @@ npm run test:integration
 
 El runner (`src/tests/run-all.js`) hace requests a `http://localhost:3000` por defecto. Si tu API está en otra URL define `BASE_URL`.
 
+## Documentación de la API (Swagger UI)
+
+La API incluye documentación OpenAPI expuesta con Swagger UI.
+
+- UI interactiva: `http://localhost:3000/docs`
+
+
 ## Endpoints principales
 - GET /health — health check básico
 - GET /neo4j/health — verifica conectividad a Neo4j

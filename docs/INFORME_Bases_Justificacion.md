@@ -199,6 +199,12 @@ Si bien las alternativas pueden aportar ventajas, estas se presentan en casos MU
 A continuación se muestran los comandos `curl` que permiten verificar el cumplimiento de todos los servicios y consultas requeridos en el Trabajo Práctico.  
 Cada comando puede ejecutarse directamente sobre la API desplegada en `http://localhost:3000`, utilizando `jq` para formatear la salida JSON.
 
+## Documentación de la API (Swagger)
+
+La API está documentada con una especificación OpenAPI y expuesta mediante Swagger UI.
+
+- Interfaz interactiva: `http://localhost:3000/docs`
+
 ---
 
 ### **1. Clientes activos con pólizas vigentes**
