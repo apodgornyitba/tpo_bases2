@@ -2,10 +2,20 @@ import express from 'express';
 import { MongoClient } from 'mongodb';
 import { ensureIndexes } from './ensure-indexes.js';
 import { session as neo4jSession, pingNeo4j, toInt } from './neo4j.js';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './swagger.js';
 
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://mongo:27017/aseguradoras';
 const app = express();
 app.use(express.json());
+
+// Swagger UI (docs)
+try {
+    app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+    app.get('/docs.json', (req, res) => res.json(swaggerSpec));
+} catch (e) {
+    console.warn('Swagger UI not available:', e && e.message);
+}
 
 const asISO = d => {
     if (d && d.year && d.month && d.day) {
